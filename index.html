@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Passport Photo Capture</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app">
+      <h1>Passport Capture Tool</h1>
+      <p class="subtitle">Capture with webcam and export as JPG/JPEG under required size limits.</p>
+
+      <section class="panel controls">
+        <label for="mode">Document Type</label>
+        <select id="mode">
+          <option value="photo">Photograph (max 250 KB)</option>
+          <option value="signature">Signature (max 100 KB)</option>
+        </select>
+
+        <div class="buttons">
+          <button id="startCamera" type="button">Start Camera</button>
+          <button id="capture" type="button" disabled>Capture</button>
+          <button id="retake" type="button" disabled>Retake</button>
+          <button id="download" type="button" disabled>Download JPG</button>
+        </div>
+
+        <p id="status" class="status">Camera is not started.</p>
+      </section>
+
+      <section class="panel preview-grid">
+        <div>
+          <h2>Live Camera</h2>
+          <div id="cameraFrame" class="media-frame" data-mode="photo">
+            <video id="video" autoplay playsinline muted></video>
+            <div id="guideOval" class="guide-oval" aria-hidden="true"></div>
+          </div>
+        </div>
+
+        <div>
+          <h2>Captured Output</h2>
+          <div id="outputFrame" class="media-frame" data-mode="photo">
+            <img id="outputPreview" alt="Captured output preview" />
+          </div>
+          <dl class="meta">
+            <div>
+              <dt>Type</dt>
+              <dd>JPG/JPEG</dd>
+            </div>
+            <div>
+              <dt>Final Size</dt>
+              <dd id="outputSize">-</dd>
+            </div>
+            <div>
+              <dt>Limit</dt>
+              <dd id="limitValue">250 KB</dd>
+            </div>
+          </dl>
+        </div>
+      </section>
+
+      <canvas id="captureCanvas" hidden></canvas>
+    </main>
+
+    <script src="script.js"></script>
+  </body>
+</html>
