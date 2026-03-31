@@ -103,7 +103,7 @@ async function ensureBodyPixModel() {
 async function replaceBackgroundWithWhite(sourceCanvas) {
   const model = await ensureBodyPixModel();
   if (!model) {
-    return { canvas: sourceCanvas, applied: false };
+    return applyHeuristicWhiteBackground(sourceCanvas);
   }
 
   try {
@@ -166,10 +166,91 @@ async function replaceBackgroundWithWhite(sourceCanvas) {
     }
 
     outCtx.putImageData(outImage, 0, 0);
-    return { canvas: whiteCanvas, applied: true };
+    return { canvas: whiteCanvas, applied: true, method: "ai" };
   } catch (_) {
-    return { canvas: sourceCanvas, applied: false };
+    return applyHeuristicWhiteBackground(sourceCanvas);
   }
+}
+
+function applyHeuristicWhiteBackground(sourceCanvas) {
+  const width = sourceCanvas.width;
+  const height = sourceCanvas.height;
+  const ctx = sourceCanvas.getContext("2d", { willReadFrequently: true });
+  const srcImage = ctx.getImageData(0, 0, width, height);
+  const src = srcImage.data;
+
+  const edgeStep = Math.max(4, Math.floor(Math.min(width, height) / 150));
+  const margin = Math.max(2, Math.floor(Math.min(width, height) * 0.03));
+  let rSum = 0;
+  let gSum = 0;
+  let bSum = 0;
+  let edgeCount = 0;
+
+  for (let x = margin; x < width - margin; x += edgeStep) {
+    const topI = ((margin * width) + x) * 4;
+    const bottomI = (((height - margin - 1) * width) + x) * 4;
+    rSum += src[topI] + src[bottomI];
+    gSum += src[topI + 1] + src[bottomI + 1];
+    bSum += src[topI + 2] + src[bottomI + 2];
+    edgeCount += 2;
+  }
+
+  for (let y = margin; y < height - margin; y += edgeStep) {
+    const leftI = ((y * width) + margin) * 4;
+    const rightI = ((y * width) + (width - margin - 1)) * 4;
+    rSum += src[leftI] + src[rightI];
+    gSum += src[leftI + 1] + src[rightI + 1];
+    bSum += src[leftI + 2] + src[rightI + 2];
+    edgeCount += 2;
+  }
+
+  if (edgeCount === 0) {
+    return { canvas: sourceCanvas, applied: false, method: "none" };
+  }
+
+  const bgR = rSum / edgeCount;
+  const bgG = gSum / edgeCount;
+  const bgB = bSum / edgeCount;
+  const bgLuma = 0.299 * bgR + 0.587 * bgG + 0.114 * bgB;
+
+  const outCanvas = document.createElement("canvas");
+  outCanvas.width = width;
+  outCanvas.height = height;
+  const outCtx = outCanvas.getContext("2d");
+  const outImage = outCtx.createImageData(width, height);
+  const out = outImage.data;
+
+  let whitened = 0;
+  const chromaTolerance = bgLuma > 170 ? 78 : 58;
+  const brightLumaCutoff = Math.max(190, bgLuma - 8);
+  for (let i = 0; i < src.length; i += 4) {
+    const r = src[i];
+    const g = src[i + 1];
+    const b = src[i + 2];
+    const luma = 0.299 * r + 0.587 * g + 0.114 * b;
+    const colorDiff = Math.abs(r - bgR) + Math.abs(g - bgG) + Math.abs(b - bgB);
+    const nearBackground = colorDiff < chromaTolerance && luma > brightLumaCutoff;
+
+    if (nearBackground) {
+      out[i] = 255;
+      out[i + 1] = 255;
+      out[i + 2] = 255;
+      whitened += 1;
+    } else {
+      out[i] = r;
+      out[i + 1] = g;
+      out[i + 2] = b;
+    }
+    out[i + 3] = 255;
+  }
+
+  outCtx.putImageData(outImage, 0, 0);
+  const whitenedRatio = whitened / (width * height);
+  if (whitenedRatio < 0.12) {
+    return { canvas: sourceCanvas, applied: false, method: "none" };
+  }
+
+  return { canvas: outCanvas, applied: true, method: "heuristic" };
 }
 
 function drawCover(sourceCanvas, targetCanvas, width, height, focusX = 0.5, focusY = 0.5) {
@@ -315,12 +396,14 @@ async function captureImage() {
   const wantsWhiteBg = mode === "photo" && whiteBgEl.checked;
   let sourceForOutput = captureCanvas;
   let whiteBgApplied = false;
+  let whiteBgMethod = "none";
 
   if (wantsWhiteBg) {
     setStatus("Applying white background...", false);
     const whiteBgResult = await replaceBackgroundWithWhite(captureCanvas);
     sourceForOutput = whiteBgResult.canvas;
     whiteBgApplied = whiteBgResult.applied;
+    whiteBgMethod = whiteBgResult.method || "none";
   }
 
   const result = await compressToLimit(
@@ -352,7 +435,9 @@ async function captureImage() {
     : " Centered using frame guide.";
   const backgroundHint = wantsWhiteBg
     ? whiteBgApplied
-      ? " White background applied."
+      ? whiteBgMethod === "heuristic"
+        ? " White background applied (fallback mode)."
+        : " White background applied."
       : " White background could not be applied; original background kept."
     : "";
   setStatus(
