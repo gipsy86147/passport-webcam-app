@@ -17,6 +17,10 @@
           <option value="photo">Photograph (max 250 KB)</option>
           <option value="signature">Signature (max 100 KB)</option>
         </select>
+        <label class="inline-toggle" for="whiteBg">
+          <input id="whiteBg" type="checkbox" checked />
+          Apply white background (photo mode)
+        </label>
 
         <div class="buttons">
           <button id="startCamera" type="button">Start Camera</button>
@@ -62,6 +66,10 @@
       <canvas id="captureCanvas" hidden></canvas>
     </main>
 
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core@4.22.0/dist/tf-core.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter@4.22.0/dist/tf-converter.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl@4.22.0/dist/tf-backend-webgl.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/body-pix@2.2.1/dist/body-pix.min.js"></script>
     <script src="script.js"></script>
   </body>
 </html>

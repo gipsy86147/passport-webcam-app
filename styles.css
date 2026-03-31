@@ -63,6 +63,17 @@ select {
   padding: 8px;
 }
 
+.inline-toggle {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  font-weight: 500;
+}
+
+.inline-toggle input {
+  margin: 0;
+}
+
 .buttons {
   display: flex;
   gap: 10px;

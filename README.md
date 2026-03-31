@@ -17,4 +17,5 @@ Simple browser app to capture webcam images and export only `JPG/JPEG` under siz
 
 - Output is always JPEG (`.jpg`).
 - App auto-crops and compresses to fit the selected size limit.
+- Photo mode includes an optional AI white-background cleanup.
 - If compression fails (rare), retry with cleaner background and better lighting.

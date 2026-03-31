@@ -20,10 +20,12 @@ const cameraFrameEl = document.getElementById("cameraFrame");
 const outputFrameEl = document.getElementById("outputFrame");
 const outputSizeEl = document.getElementById("outputSize");
 const limitValueEl = document.getElementById("limitValue");
+const whiteBgEl = document.getElementById("whiteBg");
 const captureCanvas = document.getElementById("captureCanvas");
 
 let stream = null;
 let lastCaptureBlob = null;
+let bodyPixModelPromise = null;
 
 function formatKB(bytes) {
   return `${(bytes / 1024).toFixed(1)} KB`;
@@ -47,12 +49,96 @@ function updateModeLayout() {
   const mode = modeEl.value;
   cameraFrameEl.dataset.mode = mode;
   outputFrameEl.dataset.mode = mode;
+  whiteBgEl.disabled = mode !== "photo";
 }
 
 async function canvasToJpegBlob(canvas, quality) {
   return new Promise((resolve) => {
     canvas.toBlob((blob) => resolve(blob), "image/jpeg", quality);
   });
+}
+
+async function ensureBodyPixModel() {
+  if (!window.bodyPix || !window.tf) {
+    return null;
+  }
+
+  if (!bodyPixModelPromise) {
+    bodyPixModelPromise = (async () => {
+      try {
+        await window.tf.setBackend("webgl");
+        await window.tf.ready();
+      } catch (_) {
+        // Fallback to whichever backend is available.
+      }
+
+      return window.bodyPix.load({
+        architecture: "MobileNetV1",
+        outputStride: 16,
+        multiplier: 0.75,
+        quantBytes: 2,
+      });
+    })();
+  }
+
+  try {
+    return await bodyPixModelPromise;
+  } catch (_) {
+    return null;
+  }
+}
+
+async function replaceBackgroundWithWhite(sourceCanvas) {
+  const model = await ensureBodyPixModel();
+  if (!model) {
+    return { canvas: sourceCanvas, applied: false };
+  }
+
+  try {
+    const segmentation = await model.segmentPerson(sourceCanvas, {
+      flipHorizontal: false,
+      internalResolution: "medium",
+      segmentationThreshold: 0.7,
+      maxDetections: 1,
+      scoreThreshold: 0.3,
+      nmsRadius: 20,
+    });
+
+    if (!segmentation?.data) {
+      return { canvas: sourceCanvas, applied: false };
+    }
+
+    const width = sourceCanvas.width;
+    const height = sourceCanvas.height;
+    const srcCtx = sourceCanvas.getContext("2d", { willReadFrequently: true });
+    const src = srcCtx.getImageData(0, 0, width, height).data;
+
+    const whiteCanvas = document.createElement("canvas");
+    whiteCanvas.width = width;
+    whiteCanvas.height = height;
+    const outCtx = whiteCanvas.getContext("2d");
+    const outImage = outCtx.createImageData(width, height);
+    const out = outImage.data;
+
+    for (let pixel = 0; pixel < segmentation.data.length; pixel += 1) {
+      const i = pixel * 4;
+      if (segmentation.data[pixel] === 1) {
+        out[i] = src[i];
+        out[i + 1] = src[i + 1];
+        out[i + 2] = src[i + 2];
+      } else {
+        out[i] = 255;
+        out[i + 1] = 255;
+        out[i + 2] = 255;
+      }
+      out[i + 3] = 255;
+    }
+
+    outCtx.putImageData(outImage, 0, 0);
+    return { canvas: whiteCanvas, applied: true };
+  } catch (_) {
+    return { canvas: sourceCanvas, applied: false };
+  }
 }
 
 function drawCover(sourceCanvas, targetCanvas, width, height, focusX = 0.5, focusY = 0.5) {
@@ -195,9 +281,19 @@ async function captureImage() {
   const maxBytes = limitsByMode[mode];
   const targetRes = resolutionByMode[mode];
   const focusPoint = await resolveFocusPoint(captureCanvas, mode);
+  const wantsWhiteBg = mode === "photo" && whiteBgEl.checked;
+  let sourceForOutput = captureCanvas;
+  let whiteBgApplied = false;
+
+  if (wantsWhiteBg) {
+    setStatus("Applying white background...", false);
+    const whiteBgResult = await replaceBackgroundWithWhite(captureCanvas);
+    sourceForOutput = whiteBgResult.canvas;
+    whiteBgApplied = whiteBgResult.applied;
+  }
 
   const result = await compressToLimit(
-    captureCanvas,
+    sourceForOutput,
     maxBytes,
     targetRes.width,
     targetRes.height,
@@ -223,8 +319,13 @@ async function captureImage() {
   const centeringHint = focusPoint.faceCentered
     ? " Face auto-centered."
     : " Centered using frame guide.";
+  const backgroundHint = wantsWhiteBg
+    ? whiteBgApplied
+      ? " White background applied."
+      : " White background could not be applied; original background kept."
+    : "";
   setStatus(
-    `Captured ${mode} as JPG in ${formatKB(lastCaptureBlob.size)} (limit ${formatKB(maxBytes)}).${centeringHint}`,
+    `Captured ${mode} as JPG in ${formatKB(lastCaptureBlob.size)} (limit ${formatKB(maxBytes)}).${centeringHint}${backgroundHint}`,
     true,
   );
 }
