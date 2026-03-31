@@ -65,11 +65,23 @@ async function ensureBodyPixModel() {
 
   if (!bodyPixModelPromise) {
     bodyPixModelPromise = (async () => {
+      let backendReady = false;
       try {
         await window.tf.setBackend("webgl");
         await window.tf.ready();
+        backendReady = true;
       } catch (_) {
-        // Fallback to whichever backend is available.
+        // Fallback below.
+      }
+
+      if (!backendReady) {
+        try {
+          await window.tf.setBackend("cpu");
+          await window.tf.ready();
+          backendReady = true;
+        } catch (_) {
+          // Leave backend selection to tfjs defaults.
+        }
       }
 
       return window.bodyPix.load({
@@ -95,9 +107,18 @@ async function replaceBackgroundWithWhite(sourceCanvas) {
   }
 
   try {
-    const segmentation = await model.segmentPerson(sourceCanvas, {
+    const sourceWidth = sourceCanvas.width;
+    const sourceHeight = sourceCanvas.height;
+    const segWidth = Math.min(640, sourceWidth);
+    const segHeight = Math.max(360, Math.round((segWidth * sourceHeight) / sourceWidth));
+    const segCanvas = document.createElement("canvas");
+    segCanvas.width = segWidth;
+    segCanvas.height = segHeight;
+    segCanvas.getContext("2d").drawImage(sourceCanvas, 0, 0, segWidth, segHeight);
+
+    const segmentation = await model.segmentPerson(segCanvas, {
       flipHorizontal: false,
-      internalResolution: "medium",
+      internalResolution: "low",
       segmentationThreshold: 0.7,
       maxDetections: 1,
       scoreThreshold: 0.3,
@@ -108,8 +129,9 @@ async function replaceBackgroundWithWhite(sourceCanvas) {
       return { canvas: sourceCanvas, applied: false };
     }
 
-    const width = sourceCanvas.width;
-    const height = sourceCanvas.height;
+    const width = sourceWidth;
+    const height = sourceHeight;
+    const segData = segmentation.data;
     const srcCtx = sourceCanvas.getContext("2d", { willReadFrequently: true });
     const src = srcCtx.getImageData(0, 0, width, height).data;
 
@@ -120,18 +142,27 @@ async function replaceBackgroundWithWhite(sourceCanvas) {
     const outImage = outCtx.createImageData(width, height);
     const out = outImage.data;
 
-    for (let pixel = 0; pixel < segmentation.data.length; pixel += 1) {
-      const i = pixel * 4;
-      if (segmentation.data[pixel] === 1) {
-        out[i] = src[i];
-        out[i + 1] = src[i + 1];
-        out[i + 2] = src[i + 2];
-      } else {
-        out[i] = 255;
-        out[i + 1] = 255;
-        out[i + 2] = 255;
+    for (let y = 0; y < height; y += 1) {
+      const segY = Math.min(segHeight - 1, Math.floor((y * segHeight) / height));
+      const rowOffset = y * width;
+      const segRowOffset = segY * segWidth;
+
+      for (let x = 0; x < width; x += 1) {
+        const segX = Math.min(segWidth - 1, Math.floor((x * segWidth) / width));
+        const segPixel = segData[segRowOffset + segX];
+        const i = (rowOffset + x) * 4;
+
+        if (segPixel === 1) {
+          out[i] = src[i];
+          out[i + 1] = src[i + 1];
+          out[i + 2] = src[i + 2];
+        } else {
+          out[i] = 255;
+          out[i + 1] = 255;
+          out[i + 2] = 255;
+        }
+        out[i + 3] = 255;
       }
-      out[i + 3] = 255;
     }
 
     outCtx.putImageData(outImage, 0, 0);
