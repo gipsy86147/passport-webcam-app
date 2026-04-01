@@ -2,7 +2,7 @@
 
 Simple browser app to capture webcam images and export only `JPG/JPEG` under size limits:
 
-- Photograph: maximum `250 KB`
+- Photograph: `630 x 810` pixels, maximum `250 KB`
 - Signature: maximum `100 KB`
 
 ## Run

@@ -4,7 +4,7 @@ const limitsByMode = {
 };
 
 const resolutionByMode = {
-  photo: { width: 600, height: 600 },
+  photo: { width: 630, height: 810 },
   signature: { width: 600, height: 250 },
 };
 
@@ -311,7 +311,14 @@ async function resolveFocusPoint(sourceCanvas, mode) {
   };
 }
 
-async function compressToLimit(sourceCanvas, maxBytes, initialWidth, initialHeight, focusPoint) {
+async function compressToLimit(
+  sourceCanvas,
+  maxBytes,
+  initialWidth,
+  initialHeight,
+  focusPoint,
+  allowResize = true,
+) {
   const workCanvas = document.createElement("canvas");
   let width = initialWidth;
   let height = initialHeight;
@@ -319,11 +326,15 @@ async function compressToLimit(sourceCanvas, maxBytes, initialWidth, initialHeig
   drawCover(sourceCanvas, workCanvas, width, height, focusPoint.x, focusPoint.y);
 
   for (let round = 0; round < 8; round += 1) {
-    for (let quality = 0.92; quality >= 0.3; quality -= 0.08) {
+    for (let quality = 0.92; quality >= 0.2; quality -= 0.06) {
       const blob = await canvasToJpegBlob(workCanvas, quality);
       if (blob && blob.size <= maxBytes) {
         return { blob, width, height, quality };
       }
+    }
+
+    if (!allowResize) {
+      break;
     }
 
     width = Math.round(width * 0.9);
@@ -392,6 +403,7 @@ async function captureImage() {
   const mode = modeEl.value;
   const maxBytes = limitsByMode[mode];
   const targetRes = resolutionByMode[mode];
+  const shouldKeepExactDimensions = mode === "photo";
   const focusPoint = await resolveFocusPoint(captureCanvas, mode);
   const wantsWhiteBg = mode === "photo" && whiteBgEl.checked;
   let sourceForOutput = captureCanvas;
@@ -412,10 +424,14 @@ async function captureImage() {
     targetRes.width,
     targetRes.height,
     focusPoint,
+    !shouldKeepExactDimensions,
   );
 
   if (!result) {
-    setStatus("Could not compress under limit. Move closer to plain background and retry.");
+    const dimensionHint = shouldKeepExactDimensions
+      ? `at ${targetRes.width}x${targetRes.height}`
+      : "under current settings";
+    setStatus(`Could not compress ${dimensionHint} under limit. Retry with plain background and better lighting.`);
     return;
   }
 

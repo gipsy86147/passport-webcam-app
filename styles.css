@@ -120,7 +120,7 @@ h2 {
 .media-frame {
   position: relative;
   width: 100%;
-  aspect-ratio: 1 / 1;
+  aspect-ratio: 7 / 9;
   overflow: hidden;
   background: #0f1722;
   border: 1px solid var(--border);
