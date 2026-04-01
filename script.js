@@ -26,6 +26,7 @@ const captureCanvas = document.getElementById("captureCanvas");
 let stream = null;
 let lastCaptureBlob = null;
 let bodyPixModelPromise = null;
+let faceDetectorInstance = null;
 
 function formatKB(bytes) {
   return `${(bytes / 1024).toFixed(1)} KB`;
@@ -38,6 +39,13 @@ function setStatus(message, ok = false) {
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
+}
+
+function createCanvas(width, height) {
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  return canvas;
 }
 
 function updateLimitText() {
@@ -56,6 +64,26 @@ async function canvasToJpegBlob(canvas, quality) {
   return new Promise((resolve) => {
     canvas.toBlob((blob) => resolve(blob), "image/jpeg", quality);
   });
+}
+
+function getFaceDetector() {
+  if (typeof window.FaceDetector !== "function") {
+    return null;
+  }
+
+  if (!faceDetectorInstance) {
+    try {
+      faceDetectorInstance = new FaceDetector({ fastMode: true, maxDetectedFaces: 1 });
+    } catch (_) {
+      try {
+        faceDetectorInstance = new FaceDetector();
+      } catch (_) {
+        faceDetectorInstance = null;
+      }
+    }
+  }
+
+  return faceDetectorInstance;
 }
 
 async function ensureBodyPixModel() {
@@ -277,18 +305,57 @@ function drawCover(sourceCanvas, targetCanvas, width, height, focusX = 0.5, focu
   ctx.drawImage(sourceCanvas, cropX, cropY, cropW, cropH, 0, 0, width, height);
 }
 
-async function detectPrimaryFace(sourceCanvas) {
-  if (typeof window.FaceDetector !== "function") {
+async function detectPrimaryFaceData(sourceCanvas) {
+  const detector = getFaceDetector();
+  if (!detector) {
     return null;
   }
 
   try {
-    const detector = new FaceDetector({ fastMode: true, maxDetectedFaces: 1 });
     const detectedFaces = await detector.detect(sourceCanvas);
-    return detectedFaces.length > 0 ? detectedFaces[0].boundingBox : null;
+    return detectedFaces.length > 0 ? detectedFaces[0] : null;
   } catch (_) {
     return null;
   }
+}
+
+function getLandmark(landmarks, candidates) {
+  if (!Array.isArray(landmarks)) {
+    return null;
+  }
+
+  const normalizedCandidates = candidates.map((name) => name.toLowerCase());
+  return (
+    landmarks.find((point) => normalizedCandidates.includes(String(point.type || "").toLowerCase())) ||
+    null
+  );
+}
+
+function evaluateFrontalPose(faceData) {
+  if (!faceData?.boundingBox || !Array.isArray(faceData.landmarks)) {
+    return { ok: true, confident: false };
+  }
+
+  const leftEye = getLandmark(faceData.landmarks, ["leftEye", "eyeLeft", "eye"]);
+  const rightEye = getLandmark(faceData.landmarks, ["rightEye", "eyeRight"]);
+  const nose = getLandmark(faceData.landmarks, ["noseTip", "nose"]);
+
+  if (!leftEye || !rightEye || !nose) {
+    return { ok: true, confident: false };
+  }
+
+  const eyeDx = Math.max(1, Math.abs(leftEye.x - rightEye.x));
+  const eyeRoll = Math.abs((leftEye.y - rightEye.y) / eyeDx);
+  const eyeMidX = (leftEye.x + rightEye.x) / 2;
+  const noseOffsetRatio = Math.abs(nose.x - eyeMidX) / Math.max(1, faceData.boundingBox.width);
+  const ok = eyeRoll <= 0.08 && noseOffsetRatio <= 0.1;
+
+  return {
+    ok,
+    confident: true,
+    eyeRoll,
+    noseOffsetRatio,
+  };
 }
 
 async function resolveFocusPoint(sourceCanvas, mode) {
@@ -296,7 +363,8 @@ async function resolveFocusPoint(sourceCanvas, mode) {
     return { x: 0.5, y: 0.5, faceCentered: false };
   }
 
-  const face = await detectPrimaryFace(sourceCanvas);
+  const faceData = await detectPrimaryFaceData(sourceCanvas);
+  const face = faceData?.boundingBox;
   if (!face) {
     return { x: 0.5, y: 0.47, faceCentered: false };
   }
@@ -308,6 +376,59 @@ async function resolveFocusPoint(sourceCanvas, mode) {
     x: clamp(faceCenterX, 0, 1),
     y: clamp(faceCenterY, 0, 1),
     faceCentered: true,
+  };
+}
+
+async function normalizePhotoComposition(sourceCanvas, width, height, focusPoint) {
+  const baseCanvas = createCanvas(width, height);
+  drawCover(sourceCanvas, baseCanvas, width, height, focusPoint.x, focusPoint.y);
+
+  const faceData = await detectPrimaryFaceData(baseCanvas);
+  const bbox = faceData?.boundingBox;
+  if (!bbox) {
+    return {
+      canvas: baseCanvas,
+      notes: ["Face not detected clearly. Keep your full face visible."],
+    };
+  }
+
+  const faceWidthRatio = bbox.width / width;
+  const targetFaceRatio = 0.42;
+  const maxFaceRatio = 0.5;
+  const minFaceRatio = 0.3;
+  const notes = [];
+  let outputCanvas = baseCanvas;
+
+  if (faceWidthRatio > maxFaceRatio) {
+    const scale = clamp(targetFaceRatio / faceWidthRatio, 0.72, 0.98);
+    const scaledW = Math.round(width * scale);
+    const scaledH = Math.round(height * scale);
+    const adjusted = createCanvas(width, height);
+    const ctx = adjusted.getContext("2d");
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, width, height);
+
+    const faceCenterX = bbox.x + bbox.width / 2;
+    const faceCenterY = bbox.y + bbox.height / 2;
+    const offsetX = width / 2 - faceCenterX * scale;
+    const offsetY = height * 0.43 - faceCenterY * scale;
+
+    ctx.drawImage(baseCanvas, offsetX, offsetY, scaledW, scaledH);
+    outputCanvas = adjusted;
+    notes.push("Head size auto-adjusted for ICAO framing.");
+  } else if (faceWidthRatio < minFaceRatio) {
+    notes.push("Move slightly closer to the camera so face size is acceptable.");
+  }
+
+  const finalFaceData = await detectPrimaryFaceData(outputCanvas);
+  const pose = evaluateFrontalPose(finalFaceData || faceData);
+  if (pose.confident && !pose.ok) {
+    notes.push("Face camera directly and keep your head straight.");
+  }
+
+  return {
+    canvas: outputCanvas,
+    notes,
   };
 }
 
@@ -409,6 +530,7 @@ async function captureImage() {
   let sourceForOutput = captureCanvas;
   let whiteBgApplied = false;
   let whiteBgMethod = "none";
+  let complianceNotes = [];
 
   if (wantsWhiteBg) {
     setStatus("Applying white background...", false);
@@ -418,12 +540,23 @@ async function captureImage() {
     whiteBgMethod = whiteBgResult.method || "none";
   }
 
+  if (mode === "photo") {
+    const normalized = await normalizePhotoComposition(
+      sourceForOutput,
+      targetRes.width,
+      targetRes.height,
+      focusPoint,
+    );
+    sourceForOutput = normalized.canvas;
+    complianceNotes = normalized.notes;
+  }
+
   const result = await compressToLimit(
     sourceForOutput,
     maxBytes,
     targetRes.width,
     targetRes.height,
-    focusPoint,
+    mode === "photo" ? { x: 0.5, y: 0.5 } : focusPoint,
     !shouldKeepExactDimensions,
   );
 
@@ -456,8 +589,9 @@ async function captureImage() {
         : " White background applied."
       : " White background could not be applied; original background kept."
     : "";
+  const complianceHint = complianceNotes.length > 0 ? ` ${complianceNotes.join(" ")}` : "";
   setStatus(
-    `Captured ${mode} as JPG in ${formatKB(lastCaptureBlob.size)} (limit ${formatKB(maxBytes)}).${centeringHint}${backgroundHint}`,
+    `Captured ${mode} as JPG in ${formatKB(lastCaptureBlob.size)} (limit ${formatKB(maxBytes)}).${centeringHint}${backgroundHint}${complianceHint}`,
     true,
   );
 }
