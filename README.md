@@ -10,7 +10,7 @@ Simple browser app to capture webcam images and export only `JPG/JPEG` under siz
 1. Open `index.html` directly in a modern browser (Chrome/Edge/Firefox/Safari).
 2. Click **Start Camera** and allow webcam permission.
 3. Choose `Photograph` or `Signature`.
-4. Click **Capture**.
+4. Either click **Capture** (webcam) or **Upload Image** (existing photo).
 5. Click **Download JPG**.
 
 ## Notes

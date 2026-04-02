@@ -11,8 +11,10 @@ const resolutionByMode = {
 const modeEl = document.getElementById("mode");
 const startBtn = document.getElementById("startCamera");
 const captureBtn = document.getElementById("capture");
+const uploadBtn = document.getElementById("uploadImage");
 const retakeBtn = document.getElementById("retake");
 const downloadBtn = document.getElementById("download");
+const imageInputEl = document.getElementById("imageInput");
 const statusEl = document.getElementById("status");
 const videoEl = document.getElementById("video");
 const previewEl = document.getElementById("outputPreview");
@@ -504,37 +506,26 @@ function stopCamera() {
   stream = null;
 }
 
-async function captureImage() {
-  if (!stream) {
-    setStatus("Start camera first.");
+async function processSourceCanvas(sourceCanvas, sourceLabel) {
+  if (!sourceCanvas?.width || !sourceCanvas?.height) {
+    setStatus("Selected image is not valid.");
     return;
   }
-
-  const videoW = videoEl.videoWidth;
-  const videoH = videoEl.videoHeight;
-  if (!videoW || !videoH) {
-    setStatus("Camera is not ready yet. Please try again.");
-    return;
-  }
-
-  captureCanvas.width = videoW;
-  captureCanvas.height = videoH;
-  captureCanvas.getContext("2d").drawImage(videoEl, 0, 0, videoW, videoH);
 
   const mode = modeEl.value;
   const maxBytes = limitsByMode[mode];
   const targetRes = resolutionByMode[mode];
   const shouldKeepExactDimensions = mode === "photo";
-  const focusPoint = await resolveFocusPoint(captureCanvas, mode);
+  const focusPoint = await resolveFocusPoint(sourceCanvas, mode);
   const wantsWhiteBg = mode === "photo" && whiteBgEl.checked;
-  let sourceForOutput = captureCanvas;
+  let sourceForOutput = sourceCanvas;
   let whiteBgApplied = false;
   let whiteBgMethod = "none";
   let complianceNotes = [];
 
   if (wantsWhiteBg) {
     setStatus("Applying white background...", false);
-    const whiteBgResult = await replaceBackgroundWithWhite(captureCanvas);
+    const whiteBgResult = await replaceBackgroundWithWhite(sourceCanvas);
     sourceForOutput = whiteBgResult.canvas;
     whiteBgApplied = whiteBgResult.applied;
     whiteBgMethod = whiteBgResult.method || "none";
@@ -591,9 +582,68 @@ async function captureImage() {
     : "";
   const complianceHint = complianceNotes.length > 0 ? ` ${complianceNotes.join(" ")}` : "";
   setStatus(
-    `Captured ${mode} as JPG in ${formatKB(lastCaptureBlob.size)} (limit ${formatKB(maxBytes)}).${centeringHint}${backgroundHint}${complianceHint}`,
+    `${sourceLabel} ${mode} as JPG in ${formatKB(lastCaptureBlob.size)} (limit ${formatKB(maxBytes)}).${centeringHint}${backgroundHint}${complianceHint}`,
     true,
   );
+}
+
+async function captureImage() {
+  if (!stream) {
+    setStatus("Start camera first, or use Upload Image.");
+    return;
+  }
+
+  const videoW = videoEl.videoWidth;
+  const videoH = videoEl.videoHeight;
+  if (!videoW || !videoH) {
+    setStatus("Camera is not ready yet. Please try again.");
+    return;
+  }
+
+  captureCanvas.width = videoW;
+  captureCanvas.height = videoH;
+  captureCanvas.getContext("2d").drawImage(videoEl, 0, 0, videoW, videoH);
+  await processSourceCanvas(captureCanvas, "Captured");
+}
+
+async function loadImageFromFile(file) {
+  return new Promise((resolve, reject) => {
+    const objectUrl = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      resolve(img);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error("Could not read the selected image."));
+    };
+    img.src = objectUrl;
+  });
+}
+
+async function handleImageUpload(event) {
+  const file = event.target.files?.[0];
+  imageInputEl.value = "";
+
+  if (!file) {
+    return;
+  }
+
+  if (!file.type.startsWith("image/")) {
+    setStatus("Please upload a valid image file.");
+    return;
+  }
+
+  try {
+    setStatus("Preparing uploaded image...", false);
+    const img = await loadImageFromFile(file);
+    const uploadCanvas = createCanvas(img.naturalWidth || img.width, img.naturalHeight || img.height);
+    uploadCanvas.getContext("2d").drawImage(img, 0, 0, uploadCanvas.width, uploadCanvas.height);
+    await processSourceCanvas(uploadCanvas, "Converted");
+  } catch (error) {
+    setStatus(`Upload failed: ${error.message || error}`);
+  }
 }
 
 function resetCapture() {
@@ -632,6 +682,8 @@ modeEl.addEventListener("change", () => {
 
 startBtn.addEventListener("click", startCamera);
 captureBtn.addEventListener("click", captureImage);
+uploadBtn.addEventListener("click", () => imageInputEl.click());
+imageInputEl.addEventListener("change", handleImageUpload);
 retakeBtn.addEventListener("click", resetCapture);
 downloadBtn.addEventListener("click", downloadCapture);
 window.addEventListener("beforeunload", stopCamera);
