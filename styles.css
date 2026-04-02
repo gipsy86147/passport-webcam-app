@@ -187,6 +187,28 @@ img {
   justify-content: flex-start;
 }
 
+.capture-overlay-btn {
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  transform: translateX(-50%);
+  width: calc(100% - 24px);
+  padding: 14px 16px;
+  font-size: 1rem;
+  font-weight: 700;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  background: rgba(11, 102, 195, 0.92);
+  color: #fff;
+  backdrop-filter: blur(2px);
+}
+
+.capture-overlay-btn:disabled {
+  background: rgba(120, 130, 145, 0.7);
+  border-color: rgba(255, 255, 255, 0.5);
+  color: rgba(255, 255, 255, 0.9);
+}
+
 .meta {
   margin: 10px 0 0;
   display: grid;

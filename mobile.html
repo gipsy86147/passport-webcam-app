@@ -17,7 +17,6 @@
       <section class="panel controls mobile-controls">
         <div class="buttons mobile-actions">
           <button id="startBackCamera" type="button">Start Back Camera</button>
-          <button id="capturePhoto" type="button" disabled>Capture Photo</button>
           <button id="retakePhoto" type="button" disabled>Retake</button>
           <button id="downloadPhoto" type="button" disabled>Download JPG</button>
         </div>
@@ -33,6 +32,9 @@
             <video id="video" autoplay playsinline muted></video>
             <div class="guide-oval" aria-hidden="true"></div>
             <div class="guide-center-line" aria-hidden="true"></div>
+            <button id="capturePhoto" class="capture-overlay-btn" type="button" disabled>
+              Capture Photo
+            </button>
           </div>
         </div>
 
