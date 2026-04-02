@@ -34,6 +34,15 @@ h1 {
   color: var(--muted);
 }
 
+.subtitle-link {
+  margin-top: 8px;
+}
+
+.subtitle-link a {
+  color: var(--accent);
+  font-weight: 600;
+}
+
 .panel {
   margin-top: 20px;
   background: var(--card);
@@ -154,6 +163,28 @@ img {
 
 .media-frame[data-mode="photo"] .guide-oval {
   display: block;
+}
+
+.guide-center-line {
+  position: absolute;
+  top: 8%;
+  bottom: 8%;
+  left: 50%;
+  border-left: 1px dashed rgba(255, 255, 255, 0.7);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.mobile-app {
+  max-width: 560px;
+}
+
+.mobile-frame {
+  max-height: 78vh;
+}
+
+.mobile-actions {
+  justify-content: flex-start;
 }
 
 .meta {

@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Mobile Rear Camera Capture</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app mobile-app">
+      <h1>Mobile Rear-Camera Capture</h1>
+      <p class="subtitle">
+        Use your phone back camera with the face outline guide and export JPG at 630x810 (max 250 KB).
+      </p>
+      <p class="subtitle-link"><a href="index.html">Back To Main Tool</a></p>
+
+      <section class="panel controls mobile-controls">
+        <div class="buttons mobile-actions">
+          <button id="startBackCamera" type="button">Start Back Camera</button>
+          <button id="capturePhoto" type="button" disabled>Capture Photo</button>
+          <button id="retakePhoto" type="button" disabled>Retake</button>
+          <button id="downloadPhoto" type="button" disabled>Download JPG</button>
+        </div>
+        <p id="status" class="status">
+          Camera not started. Open from a mobile browser and tap Start Back Camera.
+        </p>
+      </section>
+
+      <section class="panel preview-grid">
+        <div>
+          <h2>Rear Camera Preview</h2>
+          <div class="media-frame mobile-frame" data-mode="photo">
+            <video id="video" autoplay playsinline muted></video>
+            <div class="guide-oval" aria-hidden="true"></div>
+            <div class="guide-center-line" aria-hidden="true"></div>
+          </div>
+        </div>
+
+        <div>
+          <h2>Captured Output</h2>
+          <div class="media-frame" data-mode="photo">
+            <img id="outputPreview" alt="Captured output preview" />
+          </div>
+          <dl class="meta">
+            <div>
+              <dt>Type</dt>
+              <dd>JPG/JPEG</dd>
+            </div>
+            <div>
+              <dt>Final Size</dt>
+              <dd id="outputSize">-</dd>
+            </div>
+            <div>
+              <dt>Output</dt>
+              <dd>630x810</dd>
+            </div>
+          </dl>
+        </div>
+      </section>
+
+      <canvas id="captureCanvas" hidden></canvas>
+    </main>
+
+    <script src="mobile.js"></script>
+  </body>
+</html>
